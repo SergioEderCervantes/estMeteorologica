@@ -1,0 +1,179 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "station-reading",
+    "title": "StationReading",
+    "description": "Lectura normalizada de la estación meteorológica",
+    "type": "object",
+    "required": [
+        "reading_id",
+        "station_id",
+        "timestamp",
+        "temperature",
+        "humidity",
+        "light",
+        "rain",
+        "actuators",
+        "sensor_status"
+    ],
+    "properties": {
+        "reading_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID único por lectura, generado por el backend"
+        },
+        "station_id": {
+            "type": "string",
+            "description": "Identificador de la estación emisora"
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha y hora UTC de la lectura (ISO 8601)"
+        },
+        "temperature": {
+            "type": "object",
+            "required": [
+                "celsius",
+                "normalized"
+            ],
+            "properties": {
+                "celsius": {
+                    "type": "number",
+                    "minimum": -20,
+                    "maximum": 50,
+                    "description": "Temperatura cropeada al rango válido del DHT11"
+                },
+                "normalized": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "0.0 = -20°C, 1.0 = 50°C"
+                }
+            }
+        },
+        "humidity": {
+            "type": "object",
+            "required": [
+                "percent",
+                "normalized"
+            ],
+            "properties": {
+                "percent": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Humedad relativa en %"
+                },
+                "normalized": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                }
+            }
+        },
+        "heat_index": {
+            "type": "number",
+            "description": "Índice de calor en °C, derivado de temperatura + humedad. Representa cómo se siente realmente."
+        },
+        "light": {
+            "type": "object",
+            "required": [
+                "normalized",
+                "label"
+            ],
+            "properties": {
+                "normalized": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "0.0 = oscuridad total, 1.0 = luz máxima"
+                },
+                "label": {
+                    "type": "string",
+                    "enum": [
+                        "oscuro",
+                        "tenue",
+                        "moderado",
+                        "brillante"
+                    ],
+                    "description": "Categoría legible derivada del valor normalizado"
+                }
+            }
+        },
+        "rain": {
+            "type": "object",
+            "required": [
+                "is_raining",
+                "intensity"
+            ],
+            "properties": {
+                "is_raining": {
+                    "type": "boolean",
+                    "description": "True si supera el umbral definido en el backend"
+                },
+                "intensity": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "Nivel de lluvia normalizado. 0.0 = seco, 1.0 = completamente mojado"
+                }
+            }
+        },
+        "actuators": {
+            "type": "object",
+            "required": [
+                "fan",
+                "led",
+                "buzzer"
+            ],
+            "description": "Estado actual de cada actuador al momento de la lectura",
+            "properties": {
+                "fan": {
+                    "type": "boolean",
+                    "description": "Ventilador — activado por temperatura/humedad alta"
+                },
+                "led": {
+                    "type": "boolean",
+                    "description": "LED/foco — activado por nivel de luz bajo"
+                },
+                "buzzer": {
+                    "type": "boolean",
+                    "description": "Buzzer — activado al detectar lluvia"
+                }
+            }
+        },
+        "sensor_status": {
+            "type": "object",
+            "description": "Estado de salud de cada sensor. El backend no debe publicar la lectura si alguno está en error.",
+            "required": [
+                "dht11",
+                "ldr",
+                "fc37"
+            ],
+            "properties": {
+                "dht11": {
+                    "type": "string",
+                    "enum": [
+                        "ok",
+                        "error",
+                        "timeout"
+                    ]
+                },
+                "ldr": {
+                    "type": "string",
+                    "enum": [
+                        "ok",
+                        "error"
+                    ]
+                },
+                "fc37": {
+                    "type": "string",
+                    "enum": [
+                        "ok",
+                        "error"
+                    ]
+                }
+            }
+        }
+    }
+}
