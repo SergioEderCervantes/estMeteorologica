@@ -1,174 +1,139 @@
 import streamlit as st
 import pandas as pd
-import random
-import uuid
 import time
-from datetime import datetime
+import requests # <--- Importamos requests para conectarnos a la API
 import plotly.graph_objects as go
 
-# Configuración técnica de la página
-st.set_page_config(
-    page_title="Dashboard Estación Meteorológica",
-    layout="wide"
-)
+# --- CONFIGURACIÓN DE LA PÁGINA ---
+st.set_page_config(page_title="Dashboard Estación Meteorológica", layout="wide")
 
-# Estilo CSS generalizado
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
-    .stMetric { 
-        background-color: #161b22; 
-        padding: 15px; 
-        border-radius: 10px; 
-        border: 1px solid #30363d;
-        min-height: 130px; 
-    }
-    .box-activo {
-        background-color: #1f6e43;
-        color: white;
-        padding: 12px;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        font-weight: bold;
-        border-left: 5px solid #2ea043;
-    }
-    .box-inactivo {
-        background-color: #8c1d1d;
-        color: white;
-        padding: 12px;
-        border-radius: 8px;
-        margin-bottom: 10px;
-        font-weight: bold;
-        border-left: 5px solid #f85149;
-    }
+    .stMetric { background-color: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d; min-height: 130px; }
+    .box-activo { background-color: #1f6e43; color: white; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-weight: bold; border-left: 5px solid #2ea043; }
+    .box-inactivo { background-color: #8c1d1d; color: white; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-weight: bold; border-left: 5px solid #f85149; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LÓGICA DE DATOS ---
-def generar_lectura():
-    temp_c = round(random.uniform(18.0, 28.0), 1)
-    hum_p = round(random.uniform(40.0, 70.0), 1)
-    luz_norm = round(random.uniform(0.0, 1.0), 2)
-    lluvia_int = round(random.uniform(0.0, 1.0), 2)
-    
-    return {
-        "reading_id": str(uuid.uuid4()),
-        "station_id": "STATION_001",
-        "timestamp": datetime.now().strftime("%H:%M:%S"), # Usamos formato de hora para el eje X
-        "temperature": {"celsius": temp_c, "normalized": (temp_c + 20) / 70},
-        "humidity": {"percent": hum_p, "normalized": hum_p / 100},
-        "heat_index": round(temp_c + (hum_p * 0.02), 1),
-        "light": {
-            "normalized": luz_norm,
-            "label": "BRILLANTE" if luz_norm > 0.7 else "MODERADO" if luz_norm > 0.3 else "TENUE"
-        },
-        "rain": {"is_raining": lluvia_int > 0.5, "intensity": lluvia_int},
-        "actuators": {
-            "fan": temp_c > 25,
-            "led": luz_norm < 0.3,
-            "buzzer": lluvia_int > 0.5
-        },
-        "sensor_status": {
-            "dht11": random.choice(["ok", "error"]), # Simula desconexiones
-            "ldr": "ok", 
-            "fc37": "ok"
-        }
-    }
+# --- CONEXIÓN A LA API ---
+# URL de tu API (asumiendo que FastAPI corre en el puerto 8000)
+API_URL = "http://127.0.0.1:8000/readings/latest"
 
-# Inicializar histórico para las gráficas (Ahora incluye la columna 'tiempo')
+def obtener_lectura_api():
+    """Hace una petición GET a la API para obtener la última lectura real."""
+    try:
+        # Hacemos la petición con un timeout de 2 segundos para no trabar la página
+        respuesta = requests.get(API_URL, timeout=2)
+        
+        if respuesta.status_code == 200:
+            return respuesta.json() # Retorna el JSON de la API
+        elif respuesta.status_code == 404:
+            return "Vacio" # La API funciona, pero no hay lecturas guardadas aún
+        else:
+            return None
+    except requests.exceptions.RequestException:
+        return None # La API está apagada o inaccesible
+
+# --- INICIALIZAR HISTÓRICO ---
 if 'historico' not in st.session_state:
     st.session_state.historico = pd.DataFrame(columns=['tiempo', 'temp', 'hum'])
 
-# --- CONTROLES DE LA INTERFAZ ---
+# --- INTERFAZ ---
 st.title("Sistema de Monitoreo Meteorológico")
-st.caption("Análisis de datos en tiempo real - Estación Local")
+st.caption("Consumiendo datos en tiempo real de FastAPI")
 
 st.sidebar.header("Configuración de Visualización")
 tipo_grafica = st.sidebar.radio("Tipo de gráfico histórico:", ["Líneas", "Barras"])
 
-# Generar nueva lectura
-lectura = generar_lectura()
+# Intentamos obtener la lectura real
+lectura = obtener_lectura_api()
 
-# Almacenar datos limitando estrictamente a las últimas 15 muestras
-nuevo_dato = pd.DataFrame({
-    'tiempo': [lectura['timestamp']],
-    'temp': [lectura['temperature']['celsius']],
-    'hum': [lectura['humidity']['percent']]
-})
-st.session_state.historico = pd.concat([st.session_state.historico, nuevo_dato]).tail(15)
+# Si la API está conectada y mandó datos...
+if isinstance(lectura, dict):
+    
+    # Procesar fecha/hora (para el eje X de la gráfica)
+    try:
+        # Extraer solo la hora si viene en formato largo ISO 8601
+        hora_str = lectura['timestamp'].split('T')[1][:8] 
+    except:
+        hora_str = lectura['timestamp']
 
-# --- FILA 1: MÉTRICAS ---
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Temperatura", f"{lectura['temperature']['celsius']} °C", f"Sensación: {lectura['heat_index']} °C")
-col2.metric("Humedad", f"{lectura['humidity']['percent']} %", f"Normalizada: {lectura['humidity']['normalized']}")
-col3.metric("Iluminación", lectura['light']['label'], f"Índice: {lectura['light']['normalized']}")
-col4.metric("Lluvia", "Detectada" if lectura['rain']['is_raining'] else "Ninguna", f"Intensidad: {lectura['rain']['intensity']}")
+    # Guardar en el histórico (máximo 15)
+    nuevo_dato = pd.DataFrame({
+        'tiempo': [hora_str],
+        'temp': [lectura['temperature']['celsius']],
+        'hum': [lectura['humidity']['percent']]
+    })
+    st.session_state.historico = pd.concat([st.session_state.historico, nuevo_dato]).tail(15)
 
-st.write("---")
+    # --- FILA 1: MÉTRICAS ---
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Temperatura", f"{lectura['temperature']['celsius']} °C", f"Sensación: {lectura.get('heat_index', '--')} °C")
+    col2.metric("Humedad", f"{lectura['humidity']['percent']} %", f"Normalizada: {lectura['humidity']['normalized']}")
+    col3.metric("Iluminación", lectura['light']['label'], f"Índice: {lectura['light']['normalized']}")
+    col4.metric("Lluvia", "Detectada" if lectura['rain']['is_raining'] else "Ninguna", f"Intensidad: {lectura['rain']['intensity']}")
 
-# --- FILA 2: GRÁFICAS (TIEMPO vs VALOR) ---
-st.subheader("Análisis de Tendencias (Últimas 15 lecturas)")
-hist_col1, hist_col2 = st.columns(2)
+    st.write("---")
 
-fig_temp = go.Figure()
-fig_hum = go.Figure()
-df = st.session_state.historico
+    # --- FILA 2: GRÁFICAS ---
+    st.subheader("Análisis de Tendencias (Últimas 15 lecturas)")
+    hist_col1, hist_col2 = st.columns(2)
 
-# Trazado de gráficas dependiendo del tipo elegido
-if tipo_grafica == "Barras":
-    fig_temp.add_trace(go.Bar(x=df['tiempo'], y=df['temp'], marker_color='#ff4b4b', name="Temp"))
-    fig_hum.add_trace(go.Bar(x=df['tiempo'], y=df['hum'], marker_color='#0068c9', name="Hum"))
+    fig_temp = go.Figure()
+    fig_hum = go.Figure()
+    df = st.session_state.historico
+
+    if tipo_grafica == "Barras":
+        fig_temp.add_trace(go.Bar(x=df['tiempo'], y=df['temp'], marker_color='#ff4b4b', name="Temp"))
+        fig_hum.add_trace(go.Bar(x=df['tiempo'], y=df['hum'], marker_color='#0068c9', name="Hum"))
+    else:
+        fig_temp.add_trace(go.Scatter(x=df['tiempo'], y=df['temp'], mode='lines+markers', line=dict(color='#ff4b4b', width=3)))
+        fig_hum.add_trace(go.Scatter(x=df['tiempo'], y=df['hum'], mode='lines+markers', line=dict(color='#0068c9', width=3)))
+
+    config_layout = dict(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=300, margin=dict(l=40, r=20, t=20, b=40), xaxis=dict(tickangle=0, title="Tiempo"))
+
+    with hist_col1:
+        st.write("**Temperatura vs Tiempo**")
+        fig_temp.update_layout(**config_layout)
+        fig_temp.update_yaxes(range=[-20, 50], title="Temperatura (°C)")
+        st.plotly_chart(fig_temp, use_container_width=True, key="graf_temp")
+
+    with hist_col2:
+        st.write("**Humedad Relativa vs Tiempo**")
+        fig_hum.update_layout(**config_layout)
+        fig_hum.update_yaxes(range=[0, 100], title="Humedad (%)")
+        st.plotly_chart(fig_hum, use_container_width=True, key="graf_hum")
+
+    st.write("---")
+
+    # --- FILA 3: ACTUADORES Y HARDWARE ---
+    status_col1, status_col2 = st.columns(2)
+
+    with status_col1:
+        st.subheader("Estado de Actuadores")
+        for act_name, act_status in lectura['actuators'].items():
+            if act_status:
+                st.markdown(f'<div class="box-activo">{act_name.upper()}: ACTIVO</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="box-inactivo">{act_name.upper()}: INACTIVO</div>', unsafe_allow_html=True)
+
+    with status_col2:
+        st.subheader("Salud del Hardware")
+        for sensor, estado in lectura['sensor_status'].items():
+            if estado == "ok":
+                st.markdown(f'<div class="box-activo">SENSOR {sensor.upper()}: CONECTADO</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="box-inactivo">SENSOR {sensor.upper()}: NO CONECTADO / ERROR</div>', unsafe_allow_html=True)
+
+    st.caption(f"ID Lectura: {lectura['reading_id']} | Timestamp Actual: {lectura['timestamp']} | Estación: {lectura['station_id']}")
+
+elif lectura == "Vacio":
+    st.warning("La API está conectada, pero aún no hay ninguna lectura guardada en la base de datos (Error 404). Esperando datos del Arduino...")
+    
 else:
-    fig_temp.add_trace(go.Scatter(x=df['tiempo'], y=df['temp'], mode='lines+markers', line=dict(color='#ff4b4b', width=3)))
-    fig_hum.add_trace(go.Scatter(x=df['tiempo'], y=df['hum'], mode='lines+markers', line=dict(color='#0068c9', width=3)))
+    st.error("🔌 Error: No se pudo conectar con la API en `http://127.0.0.1:8000/readings/latest`. Asegúrate de que el backend de FastAPI esté corriendo.")
 
-config_layout = dict(
-    template="plotly_dark",
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    height=300,
-    margin=dict(l=40, r=20, t=20, b=40),
-    xaxis=dict(tickangle=0, title="Tiempo")
-)
-
-with hist_col1:
-    st.write("**Temperatura vs Tiempo**")
-    fig_temp.update_layout(**config_layout)
-    fig_temp.update_yaxes(range=[-20, 50], title="Temperatura (°C)")
-    # El uso de unique 'key' previene problemas de ID en Streamlit
-    st.plotly_chart(fig_temp, use_container_width=True, key="graf_temp")
-
-with hist_col2:
-    st.write("**Humedad Relativa vs Tiempo**")
-    fig_hum.update_layout(**config_layout)
-    fig_hum.update_yaxes(range=[0, 100], title="Humedad (%)")
-    st.plotly_chart(fig_hum, use_container_width=True, key="graf_hum")
-
-st.write("---")
-
-# --- FILA 3: BOXES DINÁMICOS DE ACTUADORES Y HARDWARE ---
-status_col1, status_col2 = st.columns(2)
-
-with status_col1:
-    st.subheader("Estado de Actuadores")
-    for act_name, act_status in lectura['actuators'].items():
-        label_display = act_name.upper()
-        if act_status:
-            st.markdown(f'<div class="box-activo">{label_display}: ACTIVO</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="box-inactivo">{label_display}: INACTIVO</div>', unsafe_allow_html=True)
-
-with status_col2:
-    st.subheader("Salud del Hardware")
-    for sensor, estado in lectura['sensor_status'].items():
-        sensor_display = sensor.upper()
-        if estado == "ok":
-            st.markdown(f'<div class="box-activo">SENSOR {sensor_display}: CONECTADO</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="box-inactivo">SENSOR {sensor_display}: NO CONECTADO / ERROR</div>', unsafe_allow_html=True)
-
-st.caption(f"ID Lectura: {lectura['reading_id']} | Timestamp Actual: {lectura['timestamp']}")
-
-# --- CICLO DE ACTUALIZACIÓN LIMPIO ---
-time.sleep(2.5) # Espera 2.5 segundos
-st.rerun()      # Recarga la página suavemente
+# --- CICLO DE ACTUALIZACIÓN ---
+time.sleep(3) 
+st.rerun()
