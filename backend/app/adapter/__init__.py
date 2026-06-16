@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 TEMP_MIN, TEMP_MAX = -20.0, 50.0
-RAIN_THRESHOLD = 2000  # ADC 0-4095; encima de esto se considera lluvia
+RAIN_THRESHOLD = 2000  # ADC 0-4095; por debajo de esto se considera lluvia (sensor conduce más al mojarse)
 
 
 class RawReading(BaseModel):
@@ -81,7 +81,7 @@ def normalize(raw: RawReading) -> dict:
             "label": _light_label(light_norm),
         },
         "rain": {
-            "is_raining": raw.rain_adc > RAIN_THRESHOLD,
+            "is_raining": raw.rain_adc < RAIN_THRESHOLD,
             "intensity": rain_norm,
         },
         "actuators": {
