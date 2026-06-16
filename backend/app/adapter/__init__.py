@@ -48,11 +48,11 @@ def _heat_index(t: float, h: float) -> float:
 
 
 def _light_label(normalized: float) -> str:
-    if normalized < 0.25:
+    if normalized < 0.10:
         return "oscuro"
-    if normalized < 0.50:
+    if normalized < 0.40:
         return "tenue"
-    if normalized < 0.75:
+    if normalized < 0.70:
         return "moderado"
     return "brillante"
 
