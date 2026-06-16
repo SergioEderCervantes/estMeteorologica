@@ -61,11 +61,13 @@ def parse_line(line: str, station_id: str) -> RawReading | None:
     )
 
 
-def read_serial(port: str, station_id: str, baud: int = 115200):
+def read_serial(port: str, station_id: str, baud: int = 115200, interval: float = 1.0):
     """Generador que yield dicts normalizados leyendo el puerto serial indefinidamente.
 
     Reconecta automáticamente si el puerto se desconecta.
+    Solo emite una lectura cada `interval` segundos; el resto se descarta.
     """
+    last_yield = 0.0
     while True:
         try:
             with serial.Serial(port, baud, timeout=2) as ser:
@@ -78,6 +80,10 @@ def read_serial(port: str, station_id: str, baud: int = 115200):
                     if reading_raw.dht11_status == "error":
                         print("[serial] ERROR_DHT — lectura descartada")
                         continue
+                    now = time.monotonic()
+                    if now - last_yield < interval:
+                        continue
+                    last_yield = now
                     yield normalize(reading_raw)
         except SerialException as exc:
             print(f"[serial] error: {exc}. Reintentando en {_RETRY_DELAY}s…")
