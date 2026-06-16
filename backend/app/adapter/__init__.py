@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 from pydantic import BaseModel
 
 TEMP_MIN, TEMP_MAX = -20.0, 50.0
@@ -11,14 +12,59 @@ class RawReading(BaseModel):
     station_id: str
     temperature_c: float
     humidity_pct: float
-    light_adc: int       # valor ADC 0-4095 del LDR
-    rain_adc: int        # valor ADC 0-4095 del FC-37
+    light_adc: int
+    rain_adc: int
     fan: bool
     led: bool
     buzzer: bool
-    dht11_status: str = "ok"   # "ok" | "error" | "timeout"
-    ldr_status: str = "ok"     # "ok" | "error"
-    fc37_status: str = "ok"    # "ok" | "error"
+    dht11_status: str = "ok"
+    ldr_status: str = "ok"
+    fc37_status: str = "ok"
+
+
+class Temperature(BaseModel):
+    celsius: float
+    normalized: float
+
+
+class Humidity(BaseModel):
+    percent: float
+    normalized: float
+
+
+class Light(BaseModel):
+    normalized: float
+    label: Literal["oscuro", "tenue", "moderado", "brillante"]
+
+
+class Rain(BaseModel):
+    is_raining: bool
+    intensity: float
+
+
+class Actuators(BaseModel):
+    fan: bool
+    led: bool
+    buzzer: bool
+
+
+class SensorStatus(BaseModel):
+    dht11: Literal["ok", "error", "timeout"]
+    ldr: Literal["ok", "error"]
+    fc37: Literal["ok", "error"]
+
+
+class StationReading(BaseModel):
+    reading_id: str
+    station_id: str
+    timestamp: str
+    temperature: Temperature
+    humidity: Humidity
+    heat_index: float
+    light: Light
+    rain: Rain
+    actuators: Actuators
+    sensor_status: SensorStatus
 
 
 def _clamp(v, lo, hi):
